@@ -1,3 +1,8 @@
+use crate::play::{play, play_veng};
+
+mod board;
+mod play;
+
 fn main() {
-    println!("Hello, world!");
+    play_veng();
 }
