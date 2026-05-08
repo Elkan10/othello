@@ -74,7 +74,7 @@ fn negamax(known: &mut Known, board: Board, depth: u8, mut alpha: i8, beta: i8) 
 
     let mut value = 0;
     for child in children {
-        if let Some(v) = known.get(&child) {
+        if let Some(v) = known.get(&child.canonical()) {
             value = value.max(*v);
         } else {
             let v = -negamax(known, child, depth - 1, -beta, -alpha);
