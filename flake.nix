@@ -17,7 +17,7 @@
 
       in {
         devShells.default = pkgs.mkShell {
-          name = "rust-wayland-vulkan-shell";
+          name = "rust-shell";
 
           buildInputs = with pkgs; [
             rust-bin.stable.latest.default
@@ -27,6 +27,7 @@
             llvmPackages_21.libclang
             clang
             glibc.dev
+            perf
           ];
 
           shellHook = ''

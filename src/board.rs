@@ -1,31 +1,65 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}, str::FromStr};
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Board {
-    white: u64,
-    black: u64,
+    white: BBoard,
+    black: BBoard,
 
     is_black_turn: bool,
+
+    hash: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Pos(u8);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Move {
+    #[default]
     Pass,
-    Play(u8), // u8 representing the index
+    Play(Pos), // u8 representing the index
+}
+
+const MASKS: [u64; 64] = masks();
+
+const fn masks() -> [u64; 64] {
+    let mut masks = [0; 64];
+    let mut i = 0;
+    while i < 64 {
+        masks[i] = 1 << i;
+        i += 1;
+    }
+    masks
+}
+
+
+impl Pos {
+    fn mask(self) -> u64 {
+        MASKS[self.0 as usize]
+    }
+    
+    pub fn new(x: u8, y: u8) -> Pos {
+        Pos((x as i8 * HORIZ + y as i8 * VERT) as u8)
+    }
+
+    pub fn index(self) -> u8 {
+        self.0
+    }
 }
 
 impl Move {
     fn mask(self) -> u64 {
         match self {
             Move::Pass => 0,
-            Move::Play(i) => 1 << i,
+            Move::Play(i) => i.mask(),
         }
     }
     pub fn new(x: u8, y: u8) -> Move {
-        Move::Play((x as i8 * HORIZ + y as i8 * VERT) as u8)
+        Move::Play(Pos::new(x, y))
     }
 
-    fn pos(&self) -> u8 {
+    pub fn pos(&self) -> Pos {
         match self {
             Move::Pass => panic!("Pass move does not have a pos"),
             Move::Play(i) => *i,
@@ -54,10 +88,13 @@ impl FromStr for Move {
         Ok(Move::new(col, row))
     }
 }
-pub struct MovesIter {
-    base: u64, 
-    index: u8
+
+pub enum MovesIter {
+    Base(u64),
+    Empty,
 }
+
+pub struct BBoardIter(u64);
 
 pub struct Moves {
     base: u64, 
@@ -99,43 +136,125 @@ impl Moves {
     } 
 }
 
+impl From<BBoard> for Moves {
+    fn from(value: BBoard) -> Self {
+        Moves {
+            base: value.0
+        }
+    }
+}
+
 impl IntoIterator for Moves { 
     type Item = Move;
     type IntoIter = MovesIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        MovesIter {
-            base: self.base,
-            index: 0,
+        if self.is_empty() {
+            return MovesIter::Empty;
         }
+
+        MovesIter::Base(self.base)
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BBoard(u64);
+
+impl BBoard {
+    pub fn count_ones(self) -> u8 {
+        self.0.count_ones() as u8
+    }
+}
+
+impl Shl<usize> for BBoard {
+    type Output = BBoard;
+
+    fn shl(self, rhs: usize) -> Self::Output {
+        BBoard(self.0 << rhs)
+    }
+}
+
+impl Shr<usize> for BBoard {
+    type Output = BBoard;
+
+    fn shr(self, rhs: usize) -> Self::Output {
+        BBoard(self.0 >> rhs)
+    }
+}
+
+
+impl BitXor for BBoard {
+    type Output = BBoard;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        BBoard(self.0 ^ rhs.0)
+    }
+}
+
+impl BitAnd for BBoard {
+    type Output = BBoard;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        BBoard(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for BBoard {
+    type Output = BBoard;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        BBoard(self.0 | rhs.0)
+    }
+}
+
+impl Not for BBoard {
+    type Output = BBoard;
+
+    fn not(self) -> Self::Output {
+        BBoard(!self.0)
+    }
+}
+
+impl IntoIterator for BBoard {
+    type Item = Pos;
+
+    type IntoIter = BBoardIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        BBoardIter(self.0)
+    }
+}
+
+impl Iterator for BBoardIter {
+    type Item = Pos;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+
+        let i = self.0.trailing_zeros() as u8;
+        self.0 &= self.0 - 1; // Clear lowest bit
+        Some(Pos(i))
+    } 
 }
 
 impl Iterator for MovesIter {
     type Item = Move;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index == 0 && self.base == 0 {
-            self.index += 1;
-            return Some(Move::Pass)
+        match self {
+            MovesIter::Base(0) => None,
+            MovesIter::Base(base) => {
+                let i = base.trailing_zeros() as u8;
+                *self = MovesIter::Base(*base & (*base - 1)); // Clear lowest bit
+                Some(Move::Play(Pos(i)))
+            }
+            MovesIter::Empty => {
+                *self = MovesIter::Base(0);
+                Some(Move::Pass)
+            },
         }
-
-        if self.index == 0 && self.base % 2 == 1 {
-            self.index += 1;
-            return Some(Move::Play(0));
-        }
-
-        if self.index >= 63 {
-            return None
-        }
-
-        self.index += (self.base >> (self.index + 1)).trailing_zeros() as u8 + 1;
- 
-        if self.index > 63 {
-            return None
-        }
-
-        Some(Move::Play(self.index))
     } 
 }
 
@@ -152,99 +271,110 @@ pub enum Win {
     Tie,
 }
 
-trait Flip: Sized {
-    fn flip_vertical(self) -> Self;
-    fn flip_horizontal(self) -> Self;
-    fn transpose(self) -> Self;
 
-    fn rot_ccw(self) -> Self {
-        self.transpose().flip_vertical()
+const fn ray_masks() -> [[u64; 8]; 64] {
+    let dirs = [HORIZ, -HORIZ, VERT, -VERT, VERT + HORIZ, -VERT - HORIZ, VERT - HORIZ, HORIZ - VERT];
+    let mut masks =  [[0u64; 8]; 64];
+    let mut sq = 0;
+
+    while sq < 64 {
+        let mut dir_idx = 0;
+        while dir_idx < 8 {
+            let dir = dirs[dir_idx];
+            let mut mask = 0;
+            let mut pos = sq;
+            loop {
+                let next = pos + dir;
+                
+                if next < 0 || next >= 64 { break; }
+                if pos % 8 == 7 && next % 8 == 0 { break; }
+                if pos % 8 == 0 && next % 8 == 7 { break; }
+                
+                mask |= 1 << next;
+                pos = next;
+            }
+            masks[sq as usize][dir_idx] = mask;
+            dir_idx += 1;
+        }
+        sq += 1;
     }
 
-    fn rot_cw(self) -> Self {
-        self.transpose().flip_horizontal()
+    masks
+}
+
+static ZOBRIST_TABLE: ([[u64; 64]; 2], u64) = precompute_zobrist();
+static ZOBRIST: [[u64; 64]; 2] = ZOBRIST_TABLE.0;
+static ZOBRIST_TURN: u64 = ZOBRIST_TABLE.1;
+
+const fn precompute_zobrist() -> ([[u64; 64]; 2], u64) {
+    let mut table = [[0u64; 64]; 2];
+    let mut state = 0x123456789abcdef;
+    let mut i = 0;
+    while i < 2 {
+        let mut sq = 0;
+        while sq < 64 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            table[i][sq] = state;
+            sq += 1;
+        }
+        i += 1;
+    }
+
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    let turn = state;
+
+    (table, turn)
+}
+
+
+#[derive(Clone, Copy)]
+enum Axis {
+    Right = 0,
+    Left = 1,
+    Down = 2,
+    Up = 3,
+    RightDown = 4,
+    LeftUp = 5,
+    LeftDown = 6,
+    RightUp = 7,
+}
+
+const AXIS: [Axis; 8] = [Axis::Right, Axis::Left, Axis::Down, Axis::Up, Axis::RightDown, Axis::LeftUp, Axis::LeftDown, Axis::RightUp];
+const NOT_A_FILE: BBoard = BBoard(0xfefefefefefefefe);
+const NOT_H_FILE: BBoard = BBoard(0x7f7f7f7f7f7f7f7f);
+
+fn shift(p: BBoard, axis: Axis) -> BBoard {
+    match axis {
+        Axis::Right => (p << 1) & NOT_A_FILE,
+        Axis::Left =>  (p >> 1) & NOT_H_FILE,
+        Axis::Down => p << 8,
+        Axis::Up => p >> 8,
+        Axis::RightDown => (p << 9) & NOT_A_FILE,
+        Axis::LeftUp => (p >> 9) & NOT_H_FILE,
+        Axis::LeftDown => (p << 7) & NOT_H_FILE,
+        Axis::RightUp => (p >> 7) & NOT_A_FILE,
     }
 }
 
-impl Flip for u64 {
-    fn flip_vertical(self) -> u64 {
-       self.swap_bytes() 
-    }
-
-    fn flip_horizontal(self) -> u64 {
-        let mut x = self;
-        x = ((x >> 1) & 0x5555555555555555) | ((x & 0x5555555555555555) << 1);
-        x = ((x >> 2) & 0x3333333333333333) | ((x & 0x3333333333333333) << 2);
-        x = ((x >> 4) & 0x0F0F0F0F0F0F0F0F) | ((x & 0x0F0F0F0F0F0F0F0F) << 4);
-        x
-    }
-
-    fn transpose(self) -> u64 {
-        let mut t;
-        let mut x = self;
-
-        t = (x ^ (x >> 7)) & 0x00AA00AA00AA00AA;
-        x ^= t ^ (t << 7);
-
-        t = (x ^ (x >> 14)) & 0x0000CCCC0000CCCC;
-        x ^= t ^ (t << 14);
-        
-        t = (x ^ (x >> 28)) & 0x000000000F0F0F0F;
-        x ^= t ^ (t << 28);
-
-        x
-    }
-}
-
-impl Flip for Board {
-    fn flip_vertical(self) -> Self {
-        Board {
-            black: self.black.flip_vertical(),
-            white: self.white.flip_vertical(),
-            is_black_turn: self.is_black_turn
-        }
-    }
-
-    fn flip_horizontal(self) -> Self {
-        Board {
-            black: self.black.flip_horizontal(),
-            white: self.white.flip_horizontal(),
-            is_black_turn: self.is_black_turn
-        }
-    }
-
-    fn transpose(self) -> Self {
-        Board {
-            black: self.black.transpose(),
-            white: self.white.transpose(),
-            is_black_turn: self.is_black_turn
-        }
-    }
-}
-
-impl Board {
-    pub fn canonical(&self) -> Board {
-        let vert = self.flip_vertical();
-        let horiz = self.flip_horizontal();
-        let ccw = self.rot_ccw();
-        let cw = self.rot_cw();
-
-        *[vert, horiz, ccw, cw].iter().max_by_key(|b| ((b.black as u128) << 64) | b.white as u128).unwrap()    
-    }
-
+impl Board { 
     pub fn black_count(&self) -> u8 {
-        self.black.count_ones() as u8
+        self.black.0.count_ones() as u8
     }
 
     pub fn white_count(&self) -> u8 {
-        self.white.count_ones() as u8
+        self.white.0.count_ones() as u8
     }
 
     pub fn start() -> Board {
         Board {
-            white: mask(3,3) + mask(4,4),
-            black: mask(3,4) + mask(4,3),
+            white: BBoard(mask(3,3) | mask(4,4)),
+            black: BBoard(mask(3,4) | mask(4,3)),
             is_black_turn: true,
+            hash: ZOBRIST[0][28] ^ ZOBRIST[0][35] ^ ZOBRIST[1][27] ^ ZOBRIST[1][36],
         }
     }
 
@@ -252,7 +382,8 @@ impl Board {
         Board {
             white: self.white,
             black: self.black,
-            is_black_turn: !self.is_black_turn
+            is_black_turn: !self.is_black_turn,
+            hash: self.hash,
         }
     }
 
@@ -271,85 +402,54 @@ impl Board {
     }
 
     pub fn legal_moves(&self) -> Moves {
-        let out: Moves = Moves::new(u64::MAX).into_iter().filter(|x| self.is_legal(*x)).collect();
-        
-        out
+        let (me, opp) = self.me_opp();
+        let empty = !(me | opp);
+        let mut legal = BBoard(0);
+
+        for axis in AXIS {
+            let mut flood = shift(me, axis) & opp;
+            
+            flood = flood | shift(flood, axis) & opp;
+            flood = flood | shift(flood, axis) & opp;
+            flood = flood | shift(flood, axis) & opp;
+            flood = flood | shift(flood, axis) & opp;
+            flood = flood | shift(flood, axis) & opp;
+            flood = flood | shift(flood, axis) & opp;
+
+            legal = legal | shift(flood, axis) & empty;
+        }
+
+        legal.into()
     }
 
     pub fn is_legal(&self, mv: Move) -> bool {
-        if mv.mask() & self.black != 0 || mv.mask() & self.white != 0 {
+        if mv.mask() & self.black.0 != 0 || mv.mask() & self.white.0 != 0 {
             return false;
         } 
 
-        let (me, opp) = if self.is_black_turn {
-            (self.black, self.white)
-        } else {
-            (self.white, self.black)
-        };
-
         let pos = mv.pos();
-        if Board::flip_mask(pos, me, opp, HORIZ) != 0 {
-            return true;
-        }
-        if Board::flip_mask(pos, me, opp, -HORIZ) != 0 {
-            return true;
-        }
-
-        if Board::flip_mask(pos, me, opp, VERT) != 0 {
-            return true;
-        }
-        if Board::flip_mask(pos, me, opp, -VERT) != 0 {
-            return true;
-        }
-
-        if Board::flip_mask(pos, me, opp, HORIZ + VERT) != 0 {
-            return true;
-        }
-        if Board::flip_mask(pos, me, opp, -HORIZ - VERT) != 0 {
-            return true;
-        }
-
-        if Board::flip_mask(pos, me, opp, VERT - HORIZ) != 0 {
-            return true;
-        }
-        if Board::flip_mask(pos, me, opp, -VERT + HORIZ) != 0 {
-            return true;
+        for axis in AXIS {
+            if self.flip_mask(pos, axis) != BBoard(0) {
+                return true;
+            }
         }
 
         false
     }
 
-    fn flip_mask(start: u8, me: u64, opp: u64, axis: i8) -> u64 {
-        let mut flip = 0;
-        let mut pos = start as i8;
+    fn flip_mask(&self, start: Pos, axis: Axis) -> BBoard {
+        let (me, opp) = self.me_opp();
+        
+        let mut flip = shift(BBoard(start.mask()), axis) & opp;
+        flip = flip | (shift(flip, axis) & opp);
+        flip = flip | (shift(flip, axis) & opp);
+        flip = flip | (shift(flip, axis) & opp);
+        flip = flip | (shift(flip, axis) & opp);
+        flip = flip | (shift(flip, axis) & opp);
+        flip = flip | (shift(flip, axis) & opp);
 
-        loop { 
-            if axis.rem_euclid(8) == 1 && (pos % 8) == 7 {
-                return 0
-            }
-
-            if axis.rem_euclid(8) == 7 && (pos % 8) == 0 {
-                return 0
-            }
-
-            if axis > 1 && pos >= 56 {
-                return 0
-            }
-
-            if axis < -1 && pos < 8 {
-                return 0
-            }
-
-            pos += axis;
-
-            if (opp & (1 << pos)) == 0 {
-                break
-            } 
-            flip += 1 << pos;
-        }
-
-        if (me & (1 << pos)) == 0 {
-            return 0
+        if shift(flip, axis) & me == BBoard(0) {
+            return BBoard(0)
         }
 
         flip
@@ -361,44 +461,62 @@ impl Board {
                 black: self.black,
                 white: self.white,
                 is_black_turn: !self.is_black_turn,
+                hash: self.hash,
             };
         }
-
-        let (me, opp) = if self.is_black_turn {
-            (self.black, self.white)
-        } else {
-            (self.white, self.black)
-        };
 
         let pos = mv.pos();
 
         let flip_mask = 
-            Board::flip_mask(pos, me, opp, HORIZ) +
-            Board::flip_mask(pos, me, opp, -HORIZ) +
-            Board::flip_mask(pos, me, opp, VERT) +
-            Board::flip_mask(pos, me, opp, -VERT) +
-            Board::flip_mask(pos, me, opp, VERT + HORIZ) +
-            Board::flip_mask(pos, me, opp, -VERT - HORIZ) +
-            Board::flip_mask(pos, me, opp, VERT - HORIZ) +
-            Board::flip_mask(pos, me, opp, -VERT + HORIZ);
-
+            self.flip_mask(pos, Axis::Right) |
+            self.flip_mask(pos, Axis::Left) |
+            self.flip_mask(pos, Axis::Down) |
+            self.flip_mask(pos, Axis::Up) |
+            self.flip_mask(pos, Axis::RightDown) |
+            self.flip_mask(pos, Axis::LeftUp) |
+            self.flip_mask(pos, Axis::LeftDown) |
+            self.flip_mask(pos, Axis::RightUp);
+ 
         let (mut white, mut black) = (self.white ^ flip_mask, self.black ^ flip_mask);
+        let mut hash = self.hash;
+
+        for pos in flip_mask {
+            hash ^= ZOBRIST[0][pos.index() as usize];
+            hash ^= ZOBRIST[1][pos.index() as usize];
+        }
 
         if self.is_black_turn {
-            black += mv.mask(); 
+            hash ^= ZOBRIST[0][mv.pos().index() as usize];
+            black = black | BBoard(mv.mask()); 
         } else {
-            white += mv.mask();
+            hash ^= ZOBRIST[1][mv.pos().index() as usize];
+            white = white | BBoard(mv.mask());
         }
+
+        hash ^= ZOBRIST_TURN;
 
         Board {
             white,
             black,
-            is_black_turn: !self.is_black_turn
+            is_black_turn: !self.is_black_turn,
+            hash,
         }
     }
 
     pub fn is_black_turn(&self) -> bool {
         self.is_black_turn
+    }
+
+    pub fn me_opp(&self) -> (BBoard, BBoard) {
+        if self.is_black_turn {
+            return (self.black, self.white);
+        }
+
+        (self.white, self.black)
+    }
+
+    pub fn hash(&self) -> u64 {
+        self.hash
     }
 }
 
@@ -425,14 +543,14 @@ impl Display for Board {
         let mut s: String = "".into();
         let legal = self.legal_moves();
         for i in 0..64 {
-            let b = (self.black & (1 << i)) != 0;
-            let w = (self.white & (1 << i)) != 0;
+            let b = (self.black.0 & (1 << i)) != 0;
+            let w = (self.white.0 & (1 << i)) != 0;
             s += match (b, w) {
                 (true, true) => unreachable!(),
                 (false, true) => " ",
                 (true, false) => " ",
                 (false, false) => {
-                    if legal.contains(Move::Play(i)) {
+                    if legal.contains(Move::Play(Pos(i))) {
                         "@ "
                     } else {
                         "# "

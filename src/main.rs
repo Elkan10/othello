@@ -1,8 +1,9 @@
-use crate::play::{play, play_veng};
+use crate::play::{play, play_engveng, play_veng};
 
 mod board;
 mod play;
+mod eval;
 
 fn main() {
-    play_veng();
+    play_engveng();
 }

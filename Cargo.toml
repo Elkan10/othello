@@ -3,4 +3,8 @@ name = "othello"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+opt-level = 3
+
 [dependencies]
+rayon = "1.12.0"
