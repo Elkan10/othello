@@ -143,6 +143,9 @@ fn best_move(known: &mut Known, board: Board, depth: u8) -> Move {
     mv
 }
 
+
+const MAX_MOVES: usize = 64;
+
 fn negamax(known: &mut Known, board: Board, depth: u8, depth_up: u8, mut alpha: i16, mut beta: i16) -> i16 {
     known.node_count += 1;
 
@@ -181,20 +184,18 @@ fn negamax(known: &mut Known, board: Board, depth: u8, depth_up: u8, mut alpha: 
         }
     }
 
-    let legal = board.legal_moves();
-    
-    let mut children: Vec<(Board, Move)> = legal.into_iter().map(|mv| (board.make_move(mv), mv)).collect();
-
-    children.sort_by_key(|(board, mv)| -order(*board, *mv));
+    let mut legal = board.legal_moves();
 
     let mut best = tt_move.unwrap_or(Move::Pass);
 
-    for (child, mv) in children {
+    while !legal.is_empty() {
+        let mv = legal.pick(board);
+
         if let Some(ttmv) = tt_move && ttmv == mv {
             continue;
         }
 
-        let v = -negamax(known, child, depth - 1, depth_up + 1, -beta, -alpha);
+        let v = -negamax(known, board.make_move(mv), depth - 1, depth_up + 1, -beta, -alpha);
         if v >= value {
             best = mv;
             value = v;

@@ -1,5 +1,7 @@
 use std::{fmt::Display, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}, str::FromStr};
 
+use crate::eval::order;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Board {
     white: BBoard,
@@ -37,6 +39,10 @@ const fn masks() -> [u64; 64] {
 impl Pos {
     fn mask(self) -> u64 {
         MASKS[self.0 as usize]
+    }
+
+    pub fn bboard(self) -> BBoard {
+        BBoard(self.mask())
     }
     
     pub fn new(x: u8, y: u8) -> Pos {
@@ -96,6 +102,7 @@ pub enum MovesIter {
 
 pub struct BBoardIter(u64);
 
+#[derive(Clone, Copy)]
 pub struct Moves {
     base: u64, 
 }
@@ -114,6 +121,22 @@ impl FromIterator<Move> for Moves {
 }
 
 impl Moves {
+    pub fn pick(&mut self, board: Board) -> Move {
+        let mut iter = self.into_iter();
+        let mut best = iter.next().unwrap();
+
+        for mv in iter {
+            if order(board, mv) > order(board, best) {
+                best = mv;
+            }
+        }
+        if let Move::Play(pos) = best {
+            self.base &= !pos.mask();
+        }
+        
+        best
+    }
+
     fn new(base: u64) -> Self {
         Self {
             base,

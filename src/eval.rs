@@ -44,16 +44,25 @@ pub fn eval(board: Board) -> i16 {
     3 * pos + 5 * frontier
 }
 
-pub fn order(board: Board, mv: Move) -> i16 {
+pub fn order(pre_board: Board, mv: Move) -> i16 {
     let pos = match mv {
-        Move::Play(pos) => SQUARE_WEIGHTS[pos.index() as usize],
+        Move::Play(pos) => pos,
         Move::Pass => return 0,
     };
 
-    let (me, opp) = board.me_opp();
+    let sq = SQUARE_WEIGHTS[pos.index() as usize];
+
+    let (me, opp) = pre_board.me_opp();
     let empty = !(me | opp);
 
-    let front = frontier_discs(me, empty) - frontier_discs(opp, empty);
+    let mask = pos.bboard();
+    let neighbors = (mask << 1) | (mask >> 1) | 
+                    (mask << 8) | (mask >> 8) |
+                    (mask << 7) | (mask >> 7) |
+                    (mask << 9) | (mask >> 9);
 
-    pos + 10 * front
+
+    let front = (neighbors & empty).count_ones();
+
+    3 * sq + ((5 * front) as i16)
 }
