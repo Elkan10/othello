@@ -4,7 +4,7 @@ use crate::{board::{Board, Move}, eval::{eval, order}};
 
 pub fn play_engveng() {
     let mut board = Board::start();
-    let mut known = Known::new(64);
+    let mut known = State::new(64);
     while board.win().is_none() {
         let mv = iter_deep(&mut known, board, 10);
         board = board.make_move(mv);
@@ -37,7 +37,7 @@ pub fn play() {
 
 pub fn play_veng() {
     let mut board = Board::start();
-    let mut known = Known::new(64);
+    let mut known = State::new(64);
 
     let stdin = io::stdin();
 
@@ -85,17 +85,17 @@ struct TTEntry {
     mv: Move,
 }
 
-struct Known {
+struct State {
     entries: Vec<TTEntry>,
     size: usize,
     node_count: u32,
 }
 
-impl Known {
-    fn new(mb: usize) -> Known {
+impl State {
+    fn new(mb: usize) -> State {
         let size = (mb * 1024 * 1024) / std::mem::size_of::<TTEntry>();
         let size = size.next_power_of_two() >> 1;
-        Known {
+        State {
             entries: vec![TTEntry::default(); size],
             size,
             node_count: 0,
@@ -121,7 +121,7 @@ impl Known {
     }
 }
 
-fn iter_deep(known: &mut Known, board: Board, depth: u8) -> Move {
+fn iter_deep(known: &mut State, board: Board, depth: u8) -> Move {
     let mut mv = Move::Pass;
 
     for depth in 0..=depth {
@@ -131,7 +131,7 @@ fn iter_deep(known: &mut Known, board: Board, depth: u8) -> Move {
     mv
 }
 
-fn best_move(known: &mut Known, board: Board, depth: u8) -> Move {
+fn best_move(known: &mut State, board: Board, depth: u8) -> Move {
     let moves = board.legal_moves();
     known.node_count = 0;
 
@@ -143,10 +143,7 @@ fn best_move(known: &mut Known, board: Board, depth: u8) -> Move {
     mv
 }
 
-
-const MAX_MOVES: usize = 64;
-
-fn negamax(known: &mut Known, board: Board, depth: u8, depth_up: u8, mut alpha: i16, mut beta: i16) -> i16 {
+fn negamax(known: &mut State, board: Board, depth: u8, depth_up: u8, mut alpha: i16, mut beta: i16) -> i16 {
     known.node_count += 1;
 
     let alpha_orig = alpha;
