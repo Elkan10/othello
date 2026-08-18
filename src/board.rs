@@ -70,7 +70,21 @@ impl Move {
             Move::Pass => panic!("Pass move does not have a pos"),
             Move::Play(i) => *i,
         }
-    } 
+    }
+
+    pub fn encode(self) -> u8 {
+        match self {
+            Move::Pass => 64,
+            Move::Play(i) => i.index(),
+        }
+    }
+
+    pub fn decode(n: u8) -> Move {
+        match n {
+            64 => Move::Pass,
+            i => Move::Play(Pos(i)),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -149,6 +163,10 @@ impl Moves {
 
     pub fn len(&self) -> u8 {
         self.base.count_ones() as u8
+    }
+
+    pub fn excluding(self, mv: Move) -> Moves {
+        Moves { base: self.base & !mv.mask() }
     }
 
     pub fn contains(&self, mv: Move) -> bool {
